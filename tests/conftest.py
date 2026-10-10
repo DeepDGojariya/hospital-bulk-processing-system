@@ -1,7 +1,10 @@
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from app.clients.hospital_directory import HospitalDirectoryClient
+from app.config import Settings
+from app.main import create_app
 from app.services.processor import BatchProcessor
 from app.store.memory import InMemoryBatchStore
 from tests.fakes import FakeDirectory
@@ -36,3 +39,15 @@ def store() -> InMemoryBatchStore:
 @pytest.fixture
 def processor(upstream, store) -> BatchProcessor:
     return BatchProcessor(upstream, store, max_concurrency=3)
+
+
+@pytest.fixture
+def client(directory):
+    settings = Settings(
+        hospital_api_base_url="http://directory.test",
+        retry_backoff_seconds=0,
+        max_upload_bytes=2048,
+    )
+    app = create_app(settings, transport=httpx.MockTransport(directory))
+    with TestClient(app) as test_client:
+        yield test_client
