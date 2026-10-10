@@ -4,7 +4,7 @@ A service that accepts a CSV of hospitals and creates them in the
 [Hospital Directory API](https://hospital-directory.onrender.com/docs) as one
 batch. The batch is activated only when every hospital was created.
 
-Live URL: _added after deployment_ (interactive docs at `/docs`)
+Live URL: https://hospital-bulk-processing-1fuu.onrender.com (interactive docs at `/docs`)
 
 ## Features
 
