@@ -193,7 +193,10 @@ Measured against the live upstream (activation included):
 |---|---|---|
 | 1 hospital | any | 5.6 s |
 | 20 hospitals | 10 | 11.8 s |
-| 20 hospitals | 20 (default) | 6.3 s |
+| 20 hospitals | 20 (default) | 7.0 s |
+
+These are single runs, not averages. The first two rows were measured before
+the warm-up request was added, which costs well under a second per batch.
 
 Sending 20 hospitals one at a time would take about 20 x 5.6 s, close to two
 minutes; that figure is calculated from the single-row time, not measured.
