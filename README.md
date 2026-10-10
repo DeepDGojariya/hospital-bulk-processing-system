@@ -9,6 +9,8 @@ Live URL: _added after deployment_ (interactive docs at `/docs`)
 ## Features
 
 - `POST /hospitals/bulk`: upload a CSV, get per-row results (required task)
+- A web page at `/` to validate a CSV, upload it, watch live progress, and
+  resume a failed batch
 - Concurrent upstream calls with a bounded, shared concurrency limit
 - Retries with exponential backoff and jitter for transient upstream failures
 - Progress tracking by polling or WebSocket
@@ -29,7 +31,8 @@ uv run uvicorn app.main:app --reload
 docker compose up --build
 ```
 
-The API is then at http://localhost:8000 and the docs at http://localhost:8000/docs.
+The upload page is then at http://localhost:8000 and the API docs at
+http://localhost:8000/docs.
 
 ```bash
 curl -F file=@samples/hospitals.csv http://localhost:8000/hospitals/bulk
@@ -45,6 +48,7 @@ curl -F file=@samples/hospitals.csv http://localhost:8000/hospitals/bulk
 | WS | `/hospitals/bulk/{batch_id}/ws` | Live progress snapshots |
 | POST | `/hospitals/bulk/{batch_id}/resume` | Retry the failed part of a batch |
 | GET | `/health` | Health check |
+| GET | `/` | Upload page (static files under `/static`) |
 
 ### CSV format
 
@@ -126,6 +130,7 @@ app/
   services/processor.py       orchestrates run and resume
   clients/hospital_directory.py   upstream calls and retry policy
   store/                      BatchStore interface + in-memory implementation
+  static/                     upload page: plain HTML, CSS, and JavaScript
 ```
 
 Request flow for `POST /hospitals/bulk`:
@@ -142,6 +147,20 @@ Request flow for `POST /hospitals/bulk`:
 
 Each layer depends only on the one below it through a small interface, so the
 parser, client, store, and processor are tested in isolation.
+
+## Upload page
+
+The page at `/` is a thin client over the public API and uses nothing else:
+
+- **Validate** calls `/hospitals/bulk/validate` and lists errors by row and field.
+- **Upload and process** starts the batch with `mode=async`, then follows it
+  over the WebSocket, updating the progress bar and the per-row table. If the
+  socket cannot connect or drops, it polls the status endpoint instead.
+- **Resume failed batch** appears when a batch ends `failed`.
+
+It is plain HTML, CSS, and JavaScript with no build step, so it ships in the
+same container. Values from the CSV and the API are written to the page as
+text, never as HTML.
 
 ## Design decisions
 

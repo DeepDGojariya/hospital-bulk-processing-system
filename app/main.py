@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-from app.api import bulk, health, progress
+from app.api import bulk, health, progress, ui
 from app.api.errors import register_error_handlers
 from app.api.limits import MULTIPART_OVERHEAD_BYTES, MaxBodySizeMiddleware
 from app.clients.hospital_directory import HospitalDirectoryClient
@@ -68,6 +69,8 @@ def create_app(
     app.include_router(health.router)
     app.include_router(bulk.router)
     app.include_router(progress.router)
+    app.include_router(ui.router)
+    app.mount("/static", StaticFiles(directory=ui.STATIC_DIR), name="static")
     return app
 
 

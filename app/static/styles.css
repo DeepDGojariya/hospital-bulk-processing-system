@@ -1,0 +1,269 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1c2430;
+  --muted: #5d6b7c;
+  --border: #d9dee5;
+  --accent: #1f6feb;
+  --accent-text: #ffffff;
+  --ok: #1a7f37;
+  --ok-bg: #dafbe1;
+  --error: #b42318;
+  --error-bg: #fee4e2;
+  --pending-bg: #eaeef2;
+  --busy-bg: #ddf4ff;
+  --busy: #0b5cad;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f141a;
+    --card: #171d25;
+    --text: #e6ebf1;
+    --muted: #9aa7b6;
+    --border: #2c3542;
+    --accent: #4c8dff;
+    --accent-text: #0b1220;
+    --ok: #56d364;
+    --ok-bg: #12301b;
+    --error: #ff8f85;
+    --error-bg: #3a1614;
+    --pending-bg: #232b36;
+    --busy-bg: #10283f;
+    --busy: #79b8ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.1rem;
+}
+
+.lede,
+.hint,
+.counts,
+footer {
+  color: var(--muted);
+}
+
+.lede {
+  margin: 0 0 24px;
+}
+
+.hint {
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.file {
+  display: block;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.file input {
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.message {
+  margin: 16px 0 0;
+  min-height: 1.5em;
+}
+
+.message:empty {
+  display: none;
+}
+
+.message.ok {
+  color: var(--ok);
+}
+
+.message.error,
+.error-text {
+  color: var(--error);
+}
+
+.errors {
+  margin: 8px 0 0;
+  padding: 12px 12px 12px 32px;
+  border-radius: 8px;
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.batch-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+progress {
+  width: 100%;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+.counts {
+  margin: 8px 0 0;
+}
+
+#resume {
+  margin-top: 16px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--pending-bg);
+  color: var(--muted);
+}
+
+.badge.processing,
+.badge.created {
+  background: var(--busy-bg);
+  color: var(--busy);
+}
+
+.badge.completed,
+.badge.created_and_activated {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.badge.failed {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.table-wrap {
+  margin-top: 20px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+td:nth-child(2) {
+  min-width: 11rem;
+}
+
+td.error-text {
+  overflow-wrap: anywhere;
+}
+
+footer {
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
