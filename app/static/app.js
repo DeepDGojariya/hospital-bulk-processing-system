@@ -33,6 +33,8 @@ const summary = el("summary");
 let current = null; // latest batch snapshot from the server
 let socket = null;
 let pollTimer = null;
+let clockTimer = null;
+let startedAt = 0;
 let requestInFlight = false;
 
 el("sample-link").href = URL.createObjectURL(new Blob([SAMPLE_CSV], { type: "text/csv" }));
@@ -159,8 +161,33 @@ function stopFollowing() {
   }
 }
 
+// The upstream answers every create after about the same delay, so results
+// tend to arrive together. A running clock shows the page is still working.
+function startClock() {
+  stopClock();
+  startedAt = Date.now();
+  showElapsed();
+  clockTimer = setInterval(showElapsed, 1000);
+}
+
+function stopClock() {
+  if (clockTimer) {
+    clearInterval(clockTimer);
+    clockTimer = null;
+  }
+  el("elapsed").textContent = "";
+}
+
+function showElapsed() {
+  const seconds = Math.floor((Date.now() - startedAt) / 1000);
+  el("elapsed").textContent = ` \u00b7 ${seconds} s elapsed`;
+}
+
 function follow(snapshot) {
   stopFollowing();
+  if (snapshot.status === "processing") {
+    startClock();
+  }
   render(snapshot);
   if (snapshot.status === "processing") {
     connect(snapshot.batch_id);
@@ -209,7 +236,10 @@ function startPolling(batchId) {
 
 function summaryFor(batch) {
   if (batch.status === "processing") {
-    return ["", ""];
+    const waiting =
+      "All rows are sent to the Hospital Directory at once. It takes a few seconds " +
+      "to answer, so results usually arrive together.";
+    return [waiting, ""];
   }
   const seconds = `${batch.processing_time_seconds.toFixed(1)} s`;
   if (batch.status === "completed") {
@@ -241,10 +271,13 @@ function render(batch) {
   status.textContent = batch.status;
   status.className = `badge ${batch.status}`;
 
+  const processing = batch.status === "processing";
   const done = batch.processed_hospitals + batch.failed_hospitals;
   const bar = el("bar");
-  bar.max = batch.total_hospitals;
-  bar.value = done;
+  bar.setAttribute("aria-valuemax", String(batch.total_hospitals));
+  bar.setAttribute("aria-valuenow", String(done));
+  bar.classList.toggle("busy", processing);
+  el("bar-fill").style.width = `${(100 * done) / batch.total_hospitals}%`;
 
   const failed = batch.failed_hospitals ? `, ${batch.failed_hospitals} failed` : "";
   el("counts").textContent = `${batch.processed_hospitals} of ${batch.total_hospitals} created${failed}`;
@@ -257,8 +290,10 @@ function render(batch) {
     ...batch.hospitals.map((hospital) => {
       const row = document.createElement("tr");
       const badge = document.createElement("span");
-      badge.className = `badge ${hospital.status}`;
-      badge.textContent = ROW_LABELS[hospital.status] || hospital.status;
+      // While the batch runs, a row without a result yet is in flight.
+      const inFlight = processing && hospital.status === "pending";
+      badge.className = inFlight ? "badge working" : `badge ${hospital.status}`;
+      badge.textContent = inFlight ? "Creating..." : ROW_LABELS[hospital.status] || hospital.status;
       const statusCell = document.createElement("td");
       statusCell.append(badge);
       row.append(
@@ -272,8 +307,9 @@ function render(batch) {
     }),
   );
 
-  if (batch.status !== "processing") {
+  if (!processing) {
     stopFollowing();
+    stopClock();
   }
   updateButtons();
 }

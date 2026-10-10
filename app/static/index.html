@@ -40,8 +40,21 @@
           <span>Batch <code id="batch-id"></code></span>
           <span id="status" class="badge"></span>
         </p>
-        <progress id="bar" max="1" value="0" aria-label="Rows processed"></progress>
-        <p id="counts" class="counts" aria-live="polite"></p>
+        <div
+          id="bar"
+          class="bar"
+          role="progressbar"
+          aria-label="Rows processed"
+          aria-valuemin="0"
+          aria-valuemax="1"
+          aria-valuenow="0"
+        >
+          <div id="bar-fill" class="bar-fill"></div>
+        </div>
+        <p class="counts">
+          <span id="counts" aria-live="polite"></span>
+          <span id="elapsed"></span>
+        </p>
         <p id="summary" class="message" role="status" aria-live="polite"></p>
         <button id="resume" type="button" hidden>Resume failed batch</button>
 

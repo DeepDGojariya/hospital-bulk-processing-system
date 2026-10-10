@@ -179,10 +179,51 @@ input:focus-visible {
   margin: 0 0 12px;
 }
 
-progress {
-  width: 100%;
+.bar {
+  position: relative;
   height: 14px;
-  accent-color: var(--accent);
+  border-radius: 999px;
+  background: var(--pending-bg);
+  overflow: hidden;
+}
+
+.bar-fill {
+  width: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+/* A highlight sweeping across the track: work is in flight even when the
+   fill has nothing new to show. */
+.bar.busy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    transparent
+  );
+  animation: sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
 }
 
 .counts {
@@ -204,7 +245,35 @@ progress {
   color: var(--muted);
 }
 
+.badge.working::before {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-fill {
+    transition: none;
+  }
+
+  .bar.busy::after {
+    width: 100%;
+    opacity: 0.5;
+    animation: none;
+  }
+
+  .badge.working::before {
+    animation: none;
+  }
+}
+
 .badge.processing,
+.badge.working,
 .badge.created {
   background: var(--busy-bg);
   color: var(--busy);
