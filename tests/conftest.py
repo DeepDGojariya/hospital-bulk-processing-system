@@ -28,7 +28,9 @@ async def upstream(directory, sleeps):
     async with httpx.AsyncClient(
         base_url="http://directory.test", transport=httpx.MockTransport(directory)
     ) as http:
-        yield HospitalDirectoryClient(http, max_retries=3, backoff_seconds=0.5, sleep=record_sleep)
+        yield HospitalDirectoryClient(
+            http, max_retries=3, backoff_seconds=0.5, max_concurrency=3, sleep=record_sleep
+        )
 
 
 @pytest.fixture
@@ -38,7 +40,7 @@ def store() -> InMemoryBatchStore:
 
 @pytest.fixture
 def processor(upstream, store) -> BatchProcessor:
-    return BatchProcessor(upstream, store, max_concurrency=3)
+    return BatchProcessor(upstream, store)
 
 
 @pytest.fixture

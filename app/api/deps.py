@@ -3,9 +3,13 @@ from typing import Annotated
 from fastapi import Depends
 from starlette.requests import HTTPConnection
 
-from app.config import Settings, get_settings
+from app.config import Settings
 from app.services.processor import BatchProcessor
 from app.store.base import BatchStore
+
+
+def get_settings(connection: HTTPConnection) -> Settings:
+    return connection.app.state.settings
 
 
 def get_store(connection: HTTPConnection) -> BatchStore:

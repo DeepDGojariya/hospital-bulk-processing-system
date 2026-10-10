@@ -2,7 +2,7 @@
 
 import asyncio
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from uuid import UUID
 
 from app.schemas import BatchResult, BatchStatus
@@ -26,7 +26,7 @@ class InMemoryBatchStore:
     def get(self, batch_id: UUID) -> BatchState | None:
         return self._batches.get(batch_id)
 
-    async def subscribe(self, batch_id: UUID) -> AsyncIterator[BatchResult]:
+    async def subscribe(self, batch_id: UUID) -> AsyncGenerator[BatchResult]:
         batch = self._batches.get(batch_id)
         if batch is None:
             return
@@ -44,16 +44,20 @@ class InMemoryBatchStore:
                 del self._subscribers[batch_id]
 
     def _evict(self) -> None:
-        """Make room for one more batch by dropping the oldest finished ones."""
+        """Make room for one more batch.
+
+        Completed batches go first, oldest first. Failed batches can still be
+        resumed, so they are only dropped when nothing completed is left. A
+        batch that is processing is never dropped.
+        """
         while len(self._batches) >= self._max_batches:
-            oldest_finished = next(
-                (
-                    batch_id
-                    for batch_id, batch in self._batches.items()
-                    if batch.status is not BatchStatus.PROCESSING
-                ),
-                None,
-            )
-            if oldest_finished is None:
+            victim = self._oldest(BatchStatus.COMPLETED) or self._oldest(BatchStatus.FAILED)
+            if victim is None:
                 return
-            del self._batches[oldest_finished]
+            del self._batches[victim]
+
+    def _oldest(self, status: BatchStatus) -> UUID | None:
+        return next(
+            (batch_id for batch_id, batch in self._batches.items() if batch.status is status),
+            None,
+        )

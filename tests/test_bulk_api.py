@@ -96,15 +96,30 @@ def test_oversized_upload_returns_413(client, directory):
     assert directory.requests == []
 
 
-def test_missing_file_field_returns_422(client):
-    assert client.post("/hospitals/bulk").status_code == 422
+def test_missing_file_field_returns_422_in_the_same_shape_as_csv_errors(client):
+    response = client.post("/hospitals/bulk")
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": "Request validation failed",
+        "errors": [{"row": None, "field": "file", "message": "Field required"}],
+    }
 
 
 def test_unknown_mode_returns_422(client, directory):
     response = client.post("/hospitals/bulk?mode=later", files=upload(VALID_CSV))
 
     assert response.status_code == 422
+    assert response.json()["errors"][0]["field"] == "mode"
     assert directory.requests == []
+
+
+def test_malformed_batch_id_returns_422_naming_the_field(client):
+    response = client.get("/hospitals/bulk/not-a-uuid")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Request validation failed"
+    assert response.json()["errors"][0]["field"] == "batch_id"
 
 
 def test_async_mode_returns_202_and_finishes_in_background(client):

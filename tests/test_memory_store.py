@@ -112,3 +112,30 @@ async def test_subscribe_to_unknown_batch_yields_nothing():
     store = InMemoryBatchStore(max_batches=10)
 
     assert [snapshot async for snapshot in store.subscribe(uuid4())] == []
+
+
+def test_eviction_prefers_completed_batches_over_resumable_failed_ones():
+    store = InMemoryBatchStore(max_batches=2)
+    failed_old = make_batch(status=BatchStatus.FAILED)
+    completed_new = make_batch(status=BatchStatus.COMPLETED)
+    incoming = make_batch()
+
+    store.save(failed_old)
+    store.save(completed_new)
+    store.save(incoming)
+
+    assert store.get(failed_old.batch_id) is failed_old
+    assert store.get(completed_new.batch_id) is None
+
+
+def test_eviction_falls_back_to_the_oldest_failed_batch():
+    store = InMemoryBatchStore(max_batches=2)
+    failed_old = make_batch(status=BatchStatus.FAILED)
+    failed_new = make_batch(status=BatchStatus.FAILED)
+
+    store.save(failed_old)
+    store.save(failed_new)
+    store.save(make_batch())
+
+    assert store.get(failed_old.batch_id) is None
+    assert store.get(failed_new.batch_id) is failed_new

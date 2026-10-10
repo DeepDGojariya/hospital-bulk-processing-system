@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 
@@ -184,3 +185,14 @@ async def test_reconciliation_tolerates_blank_phone_and_padding_from_upstream(pr
 
     assert result.status is BatchStatus.COMPLETED
     assert directory.create_calls("H2") == 1
+
+
+async def test_reconciliation_adoptions_are_logged(processor, directory, caplog):
+    directory.script("create:H2", TIMEOUT_AFTER_CREATE)
+    batch = processor.create_batch(make_rows(2))
+    await processor.run(batch)
+
+    with caplog.at_level(logging.INFO):
+        await processor.prepare_resume(batch)
+
+    assert any("adopted" in record.getMessage() for record in caplog.records)

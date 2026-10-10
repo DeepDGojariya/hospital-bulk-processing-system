@@ -44,18 +44,30 @@ def _header_errors(header: list[str]) -> list[CsvError]:
     return errors
 
 
+def _without_trailing_blanks(cells: list[str]) -> list[str]:
+    """Drop empty cells at the end of a record; spreadsheets often export them."""
+    end = len(cells)
+    while end and not cells[end - 1].strip():
+        end -= 1
+    return cells[:end]
+
+
 def parse_hospital_csv(content: bytes, max_rows: int) -> ParsedCsv:
     """Return validated rows, or every validation error found in the file."""
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
         return _file_error("File must be UTF-8 encoded text")
+    if "\x00" in text:
+        return _file_error("File contains NUL bytes and is not a text CSV")
 
     try:
         records = [
-            record
-            for record in csv.reader(io.StringIO(text, newline=""))
-            if any(cell.strip() for cell in record)
+            trimmed
+            # strict: an unterminated quote is an error, not a field that
+            # silently swallows the rest of the file.
+            for record in csv.reader(io.StringIO(text, newline=""), strict=True)
+            if (trimmed := _without_trailing_blanks(record))
         ]
     except csv.Error as exc:
         return _file_error(f"File is not valid CSV: {exc}")

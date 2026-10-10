@@ -56,7 +56,10 @@ City Medical Center,45 Oak Avenue,
 
 - `name` and `address` are required; `phone` is optional (the column may be omitted).
 - At most 20 hospitals per file. UTF-8, with or without a BOM.
-- Header names are case-insensitive. Unknown columns are rejected.
+- Header names are case-insensitive. Unknown columns are rejected; trailing
+  empty columns, which spreadsheets often export, are ignored.
+- `row` in results and errors is the 1-based number of the data row. The
+  header and blank lines are not counted.
 - An invalid file is rejected as a whole with `422` and every error listed;
   nothing is sent to the upstream.
 
@@ -90,10 +93,11 @@ response in the assignment. Batch `status` is `processing`, `completed`, or
 |---|---|
 | 200 | Processing ran. Check `status`: a batch with failed rows is still `200` because it exists and can be resumed |
 | 202 | Accepted in `mode=async`; poll the `Location` header |
+| 400 | Request body is not valid multipart form data |
 | 404 | Unknown batch |
 | 409 | Resume requested for a batch that is processing or completed |
 | 413 | Upload larger than `MAX_UPLOAD_BYTES`; oversized bodies are cut off while they arrive, not after |
-| 422 | Invalid CSV or request |
+| 422 | Invalid CSV or request. The body is always `{"detail": "...", "errors": [{"row", "field", "message"}]}` |
 | 502 | Resume could not read the batch from the upstream |
 
 ### Progress tracking and resume
@@ -161,7 +165,8 @@ failed batch is never visible as live data.
 
 **Retries are limited to failures that are safe to retry.** Connection errors
 and `429/502/503/504` are retried up to three attempts with exponential backoff and
-jitter. A read timeout on a create is not retried, because the upstream may
+jitter, waiting at least as long as a `Retry-After` header asks (capped at 30
+seconds). A read timeout on a create is not retried, because the upstream may
 have stored the hospital and a retry would duplicate it.
 
 **Resume reconciles first.** Before retrying, resume lists the batch upstream
@@ -176,9 +181,18 @@ create cannot be retried safely, each run first sends a harmless request that
 can be retried. If the upstream stays unreachable, every row is marked failed
 without a single create being sent, and the batch can be resumed later.
 
-**One concurrency limit for the whole service.** The semaphore is shared by
-all batches, so many simultaneous uploads cannot multiply the load on the
-upstream API.
+**One concurrency limit for the whole service.** The limit lives in the
+upstream client and is shared by all batches, so many simultaneous uploads
+cannot multiply the load on the upstream API. A slot is held for one attempt
+only, so a call that is backing off does not block the others.
+
+**A bug in one row does not lose the batch.** An unexpected error while
+creating a row is logged with its traceback and recorded on that row; the
+caller still receives the batch ID and can resume.
+
+**Failures are logged.** Row failures, retries, failed activations, and
+hospitals adopted during reconciliation are logged with the batch ID, and each
+run logs a one-line summary.
 
 ## Performance
 

@@ -1,6 +1,6 @@
 """Batch state and the storage interface the rest of the app depends on."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -54,5 +54,5 @@ class BatchStore(Protocol):
 
     def get(self, batch_id: UUID) -> BatchState | None: ...
 
-    def subscribe(self, batch_id: UUID) -> AsyncIterator[BatchResult]:
+    def subscribe(self, batch_id: UUID) -> AsyncGenerator[BatchResult]:
         """Yield the current snapshot, then updates until the batch stops processing."""

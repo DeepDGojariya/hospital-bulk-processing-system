@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import httpx
 import pytest
@@ -85,17 +86,62 @@ async def test_concurrency_limit_is_shared_across_batches(processor, directory):
     assert directory.max_in_flight <= 3
 
 
-async def test_unexpected_error_does_not_leave_batch_processing(processor, upstream, monkeypatch):
+async def test_unexpected_row_error_fails_the_row_and_keeps_the_batch_resumable(
+    processor, upstream, monkeypatch
+):
     async def boom(row, batch_id):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(upstream, "create_hospital", boom)
     batch = processor.create_batch(make_rows(2))
 
-    with pytest.raises(ExceptionGroup):
-        await processor.run(batch)
+    result = await processor.run(batch)
+
+    assert result.status is BatchStatus.FAILED
+    assert result.failed_hospitals == 2
+    assert [h.status for h in result.hospitals] == [RowStatus.FAILED] * 2
+    assert all("boom" in h.error for h in result.hospitals)
+
+
+async def test_cancelled_run_marks_unfinished_rows_failed(processor, directory):
+    directory.blocked = True
+    batch = processor.create_batch(make_rows(2))
+    running = asyncio.create_task(processor.run(batch))
+    await asyncio.sleep(0.02)
+
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+
+    result = batch.to_result()
+    assert result.status is BatchStatus.FAILED
+    assert result.failed_hospitals == 2
+    assert all("interrupted" in h.error for h in result.hospitals)
+
+
+async def test_shutdown_stops_background_runs(processor, directory):
+    directory.blocked = True
+    batch = processor.create_batch(make_rows(2))
+    processor.run_in_background(batch)
+    await asyncio.sleep(0.02)
+
+    await processor.shutdown()
 
     assert batch.status is BatchStatus.FAILED
+    assert [state.status for state in batch.rows] == [RowStatus.FAILED] * 2
+
+
+async def test_row_failures_are_logged_with_batch_and_row(processor, directory, caplog):
+    directory.script("create:H2", 422)
+    batch = processor.create_batch(make_rows(2))
+
+    with caplog.at_level(logging.WARNING):
+        await processor.run(batch)
+
+    assert any(
+        str(batch.batch_id) in record.getMessage() and "row 2" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 async def test_run_in_background_completes_the_batch(processor):

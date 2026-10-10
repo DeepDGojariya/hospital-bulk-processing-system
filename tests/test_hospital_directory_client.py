@@ -1,10 +1,16 @@
+import asyncio
 import json
+import logging
 from uuid import uuid4
 
 import httpx
 import pytest
 
-from app.clients.hospital_directory import UpstreamError, UpstreamHospital
+from app.clients.hospital_directory import (
+    HospitalDirectoryClient,
+    UpstreamError,
+    UpstreamHospital,
+)
 from app.schemas import HospitalRow
 
 ROW = HospitalRow(row=1, name="General", address="1 Main St", phone="555-1")
@@ -133,3 +139,52 @@ async def test_ping_raises_when_upstream_stays_down(upstream, directory):
 
     with pytest.raises(UpstreamError):
         await upstream.ping()
+
+
+async def test_retry_waits_at_least_as_long_as_retry_after(upstream, directory, sleeps):
+    directory.script("create:General", httpx.Response(429, headers={"Retry-After": "7"}))
+
+    await upstream.create_hospital(ROW, uuid4())
+
+    assert sleeps == [7.0]
+
+
+async def test_retry_after_is_capped(upstream, directory, sleeps):
+    directory.script("create:General", httpx.Response(429, headers={"Retry-After": "86400"}))
+
+    await upstream.create_hospital(ROW, uuid4())
+
+    assert sleeps == [30.0]
+
+
+async def test_retries_are_logged(upstream, directory, caplog):
+    directory.script("create:General", 503)
+
+    with caplog.at_level(logging.WARNING):
+        await upstream.create_hospital(ROW, uuid4())
+
+    assert any("Retrying POST /hospitals/" in record.getMessage() for record in caplog.records)
+
+
+async def test_backoff_does_not_hold_a_concurrency_slot(directory):
+    backoff_over = asyncio.Event()
+
+    async def sleep_until_released(seconds: float) -> None:
+        await backoff_over.wait()
+
+    async with httpx.AsyncClient(
+        base_url="http://directory.test", transport=httpx.MockTransport(directory)
+    ) as http:
+        client = HospitalDirectoryClient(
+            http, max_retries=3, backoff_seconds=0.5, max_concurrency=1, sleep=sleep_until_released
+        )
+        directory.script("create:General", 503)
+        retrying = asyncio.create_task(client.create_hospital(ROW, uuid4()))
+        await asyncio.sleep(0.01)
+
+        other = HospitalRow(row=2, name="Other", address="2 Oak Ave")
+        other_id = await asyncio.wait_for(client.create_hospital(other, uuid4()), timeout=1)
+        backoff_over.set()
+
+        assert other_id == 101
+        assert await retrying == 102

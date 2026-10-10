@@ -128,3 +128,30 @@ def test_row_errors_are_all_reported_and_no_rows_returned():
     ]
     assert parsed.rows == []
     assert parsed.total_rows == 4
+
+
+def test_trailing_empty_columns_from_a_spreadsheet_export_are_ignored():
+    parsed = parse("name,address,phone,,\nGeneral,1 Main St,555-1,,\nCity,2 Oak Ave,,,\n")
+
+    assert parsed.valid
+    assert [(r.name, r.phone) for r in parsed.rows] == [("General", "555-1"), ("City", None)]
+
+
+def test_unterminated_quote_is_reported_as_invalid_csv():
+    parsed = parse('name,address\n"General,1 Main St\nCity,2 Oak Ave\n')
+
+    assert not parsed.valid
+    assert messages(parsed)[0].startswith("File is not valid CSV")
+
+
+def test_quote_character_inside_an_unquoted_value_is_kept():
+    parsed = parse('name,address\nWard 5" North,1 Main St\n')
+
+    assert parsed.valid
+    assert parsed.rows[0].name == 'Ward 5" North'
+
+
+def test_nul_bytes_are_rejected():
+    parsed = parse_hospital_csv(b"name,address\nGen\x00eral,1 Main St\n", 20)
+
+    assert messages(parsed) == ["File contains NUL bytes and is not a text CSV"]

@@ -21,4 +21,5 @@ USER appuser
 EXPOSE 8000
 
 # A single worker on purpose: batch state lives in this process's memory.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# exec makes uvicorn PID 1, so it receives the stop signal directly.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

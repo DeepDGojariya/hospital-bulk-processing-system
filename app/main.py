@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -19,6 +20,10 @@ def create_app(
 ) -> FastAPI:
     """Build the application. `transport` lets tests replace the upstream API."""
     settings = settings or get_settings()
+    # No effect when logging is already configured, for example under pytest.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -37,13 +42,17 @@ def create_app(
                 http,
                 max_retries=settings.max_retries,
                 backoff_seconds=settings.retry_backoff_seconds,
+                max_concurrency=settings.max_concurrency,
             )
             store = InMemoryBatchStore(max_batches=settings.max_stored_batches)
+            processor = BatchProcessor(client, store)
             app.state.store = store
-            app.state.processor = BatchProcessor(
-                client, store, max_concurrency=settings.max_concurrency
-            )
-            yield
+            app.state.processor = processor
+            try:
+                yield
+            finally:
+                # Stop background runs while the HTTP client is still open.
+                await processor.shutdown()
 
     app = FastAPI(
         title="Hospital Bulk Processing API",
@@ -51,7 +60,7 @@ def create_app(
         version="1.0.0",
         lifespan=lifespan,
     )
-    app.dependency_overrides[get_settings] = lambda: settings
+    app.state.settings = settings
     register_error_handlers(app)
     app.add_middleware(
         MaxBodySizeMiddleware, max_bytes=settings.max_upload_bytes + MULTIPART_OVERHEAD_BYTES
