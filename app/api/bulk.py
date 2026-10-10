@@ -8,7 +8,7 @@ from app.api.errors import CsvValidationError
 from app.config import Settings
 from app.schemas import BatchResult, ValidationReport
 from app.services.csv_parser import ParsedCsv, parse_hospital_csv
-from app.services.processor import BatchProcessor
+from app.services.processor import BatchNotResumable, BatchProcessor, ReconciliationError
 from app.store.base import BatchState
 
 router = APIRouter(prefix="/hospitals/bulk", tags=["bulk"])
@@ -93,3 +93,36 @@ async def get_batch(batch_id: UUID, store: StoreDep) -> BatchResult:
     if batch is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
     return batch.to_result()
+
+
+@router.post(
+    "/{batch_id}/resume",
+    response_model=BatchResult,
+    summary="Retry the failed part of a batch",
+    responses={
+        202: {"model": BatchResult, "description": "Accepted (mode=async)"},
+        404: {"description": "Batch not found"},
+        409: {"description": "Batch is processing or already completed"},
+        502: {"description": "Could not read the batch from the hospital directory"},
+    },
+)
+async def resume_batch(
+    batch_id: UUID,
+    request: Request,
+    response: Response,
+    store: StoreDep,
+    processor: ProcessorDep,
+    mode: Mode = Mode.SYNC,
+) -> BatchResult:
+    batch = store.get(batch_id)
+    if batch is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
+    try:
+        await processor.prepare_resume(batch)
+    except BatchNotResumable as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except ReconciliationError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY, f"Could not reconcile batch with upstream: {exc}"
+        ) from exc
+    return await execute(batch, mode, processor, request, response)

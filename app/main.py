@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
-from app.api import bulk, health
+from app.api import bulk, health, progress
 from app.api.errors import register_error_handlers
 from app.clients.hospital_directory import HospitalDirectoryClient
 from app.config import Settings, get_settings
@@ -54,6 +54,7 @@ def create_app(
     register_error_handlers(app)
     app.include_router(health.router)
     app.include_router(bulk.router)
+    app.include_router(progress.router)
     return app
 
 
