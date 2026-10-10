@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from app.schemas import BatchStatus, HospitalRow, RowStatus
@@ -123,3 +125,62 @@ async def test_failed_reconciliation_leaves_batch_failed_and_unchanged(processor
 
     assert batch.to_result() == before
     assert batch.status is BatchStatus.FAILED
+
+
+async def test_failed_reconciliation_releases_progress_subscribers(processor, directory, store):
+    directory.script("create:H1", 422)
+    batch = processor.create_batch(make_rows(2))
+    await processor.run(batch)
+    directory.script("list", 500)
+    directory.blocked = True
+    received = []
+
+    async def consume():
+        async for snapshot in store.subscribe(batch.batch_id):
+            received.append(snapshot)
+
+    resume = asyncio.create_task(processor.prepare_resume(batch))
+    await asyncio.sleep(0.01)
+    consumer = asyncio.create_task(consume())
+    await asyncio.sleep(0.01)
+    assert received[0].status is BatchStatus.PROCESSING
+    directory.blocked = False
+
+    with pytest.raises(ReconciliationError):
+        await resume
+    await asyncio.wait_for(consumer, timeout=1)
+
+    assert received[-1].status is BatchStatus.FAILED
+
+
+async def test_unexpected_error_during_resume_does_not_leave_batch_processing(
+    processor, directory, upstream, monkeypatch
+):
+    directory.script("create:H1", 422)
+    batch = processor.create_batch(make_rows(2))
+    await processor.run(batch)
+
+    async def boom(batch_id):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(upstream, "list_batch", boom)
+
+    with pytest.raises(RuntimeError):
+        await processor.prepare_resume(batch)
+
+    assert batch.status is BatchStatus.FAILED
+
+
+async def test_reconciliation_tolerates_blank_phone_and_padding_from_upstream(processor, directory):
+    directory.script("create:H2", TIMEOUT_AFTER_CREATE)
+    batch = processor.create_batch(make_rows(2))
+    await processor.run(batch)
+    stored = next(h for h in directory.hospitals if h["name"] == "H2")
+    stored["phone"] = ""
+    stored["name"] = "H2 "
+
+    await processor.prepare_resume(batch)
+    result = await processor.run(batch)
+
+    assert result.status is BatchStatus.COMPLETED
+    assert directory.create_calls("H2") == 1

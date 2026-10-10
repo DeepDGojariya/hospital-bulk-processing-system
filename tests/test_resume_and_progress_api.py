@@ -73,11 +73,14 @@ def test_resume_returns_502_when_reconciliation_fails(client, directory):
 
 
 def test_websocket_streams_progress_until_completed(client, directory):
-    directory.delay = 0.05
+    directory.blocked = True
     batch_id = client.post("/hospitals/bulk?mode=async", files=upload(VALID_CSV)).json()["batch_id"]
     snapshots = []
 
     with client.websocket_connect(f"/hospitals/bulk/{batch_id}/ws") as websocket:
+        snapshots.append(websocket.receive_json())
+        assert snapshots[0]["status"] == "processing"
+        directory.blocked = False
         with pytest.raises(WebSocketDisconnect):
             while True:
                 snapshots.append(websocket.receive_json())

@@ -21,7 +21,7 @@ def make_rows(count: int) -> list[HospitalRow]:
 class FakeDirectory:
     """Stateful fake. Script failures with `script(key, *outcomes)`.
 
-    Keys: "create:<hospital name>", "activate", "list". Each outcome is consumed
+    Keys: "create:<hospital name>", "activate", "list", "ping". Each outcome is consumed
     by one matching request and may be an int status code, an httpx.Response,
     an Exception to raise, or TIMEOUT_AFTER_CREATE (store the hospital, then
     raise a read timeout).
@@ -31,6 +31,7 @@ class FakeDirectory:
         self.hospitals: list[dict] = []
         self.requests: list[httpx.Request] = []
         self.delay = 0.0
+        self.blocked = False  # while True, requests wait; lets tests control timing
         self.max_in_flight = 0
         self._in_flight = 0
         self._next_id = 101
@@ -55,6 +56,8 @@ class FakeDirectory:
         self._in_flight += 1
         self.max_in_flight = max(self.max_in_flight, self._in_flight)
         try:
+            while self.blocked:
+                await asyncio.sleep(0.005)
             if self.delay:
                 await asyncio.sleep(self.delay)
             return self._route(request)
@@ -80,6 +83,12 @@ class FakeDirectory:
 
     def _route(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        if request.method == "GET" and path == "/":
+            scripted = self._respond(self._next_outcome("ping"))
+            if scripted is not None:
+                return scripted
+            return httpx.Response(200, json={"status": "OK"})
+
         if request.method == "POST" and path == "/hospitals/":
             body = json.loads(request.content)
             outcome = self._next_outcome(f"create:{body['name']}")

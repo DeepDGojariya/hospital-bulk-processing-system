@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app.api import bulk, health, progress
 from app.api.errors import register_error_handlers
+from app.api.limits import MULTIPART_OVERHEAD_BYTES, MaxBodySizeMiddleware
 from app.clients.hospital_directory import HospitalDirectoryClient
 from app.config import Settings, get_settings
 from app.services.processor import BatchProcessor
@@ -52,6 +53,9 @@ def create_app(
     )
     app.dependency_overrides[get_settings] = lambda: settings
     register_error_handlers(app)
+    app.add_middleware(
+        MaxBodySizeMiddleware, max_bytes=settings.max_upload_bytes + MULTIPART_OVERHEAD_BYTES
+    )
     app.include_router(health.router)
     app.include_router(bulk.router)
     app.include_router(progress.router)

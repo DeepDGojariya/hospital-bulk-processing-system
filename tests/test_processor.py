@@ -1,5 +1,6 @@
 import asyncio
 
+import httpx
 import pytest
 
 from app.schemas import BatchStatus, RowStatus
@@ -107,3 +108,27 @@ async def test_run_in_background_completes_the_batch(processor):
         await asyncio.sleep(0.01)
 
     assert batch.status is BatchStatus.COMPLETED
+
+
+async def test_unreachable_upstream_fails_every_row_without_sending_creates(processor, directory):
+    directory.script("ping", 503, 503, 503)
+    batch = processor.create_batch(make_rows(3))
+
+    result = await processor.run(batch)
+
+    assert result.status is BatchStatus.FAILED
+    assert result.failed_hospitals == 3
+    assert all("503" in h.error for h in result.hospitals)
+    assert directory.create_calls() == 0
+    assert directory.activate_calls() == 0
+
+
+async def test_run_waits_for_a_cold_upstream_before_creating(processor, directory):
+    directory.script("ping", httpx.ReadTimeout("cold start"))
+    batch = processor.create_batch(make_rows(2))
+
+    result = await processor.run(batch)
+
+    assert result.status is BatchStatus.COMPLETED
+    assert [request.url.path for request in directory.requests[:2]] == ["/", "/"]
+    assert directory.create_calls() == 2

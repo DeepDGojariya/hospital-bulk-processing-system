@@ -24,6 +24,11 @@ class ReconciliationError(Exception):
     """The upstream batch could not be read, so resuming is not safe."""
 
 
+def _identity(name: str, address: str, phone: str | None) -> tuple[str, str, str | None]:
+    """Fields that identify a hospital, tolerant of padding and blank-vs-null phone."""
+    return name.strip(), address.strip(), (phone or "").strip() or None
+
+
 class BatchProcessor:
     def __init__(
         self, client: HospitalDirectoryClient, store: BatchStore, *, max_concurrency: int
@@ -44,10 +49,11 @@ class BatchProcessor:
         """Create every row that has no hospital yet, then activate the batch."""
         started = time.perf_counter()
         try:
-            async with asyncio.TaskGroup() as group:
-                for state in batch.rows:
-                    if state.hospital_id is None:
-                        group.create_task(self._create_row(batch, state))
+            if await self._upstream_ready(batch):
+                async with asyncio.TaskGroup() as group:
+                    for state in batch.rows:
+                        if state.hospital_id is None:
+                            group.create_task(self._create_row(batch, state))
             if all(state.hospital_id is not None for state in batch.rows):
                 await self._activate(batch)
         finally:
@@ -66,9 +72,14 @@ class BatchProcessor:
         try:
             async with self._semaphore:
                 upstream = await self._client.list_batch(batch.batch_id)
-        except UpstreamError as exc:
+        except BaseException as exc:
+            # Whatever went wrong (including cancellation), release the claim
+            # and tell subscribers, or the batch could never be resumed again.
             batch.status = BatchStatus.FAILED
-            raise ReconciliationError(str(exc)) from exc
+            self._store.save(batch)
+            if isinstance(exc, UpstreamError):
+                raise ReconciliationError(str(exc)) from exc
+            raise
 
         self._reconcile(batch, upstream)
         batch.activation_error = None
@@ -94,8 +105,8 @@ class BatchProcessor:
                 (
                     hospital
                     for hospital in orphans
-                    if (hospital.name, hospital.address, hospital.phone)
-                    == (state.row.name, state.row.address, state.row.phone)
+                    if _identity(hospital.name, hospital.address, hospital.phone)
+                    == _identity(state.row.name, state.row.address, state.row.phone)
                 ),
                 None,
             )
@@ -115,6 +126,26 @@ class BatchProcessor:
         self._background_tasks.discard(task)
         if not task.cancelled() and task.exception() is not None:
             logger.error("Background batch run failed", exc_info=task.exception())
+
+    async def _upstream_ready(self, batch: BatchState) -> bool:
+        """Wake the upstream before sending creates; fail the rows if it stays down.
+
+        The upstream can take longer than our timeout to cold-start. A create
+        that times out cannot be retried safely, so the first request is a
+        harmless one that can be.
+        """
+        todo = [state for state in batch.rows if state.hospital_id is None]
+        if not todo:
+            return True
+        try:
+            async with self._semaphore:
+                await self._client.ping()
+        except UpstreamError as exc:
+            for state in todo:
+                state.status = RowStatus.FAILED
+                state.error = f"Hospital directory unavailable: {exc}"
+            return False
+        return True
 
     async def _create_row(self, batch: BatchState, state: RowState) -> None:
         async with self._semaphore:

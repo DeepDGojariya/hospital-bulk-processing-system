@@ -12,7 +12,8 @@ Live URL: _added after deployment_ (interactive docs at `/docs`)
 - Concurrent upstream calls with a bounded, shared concurrency limit
 - Retries with exponential backoff and jitter for transient upstream failures
 - Progress tracking by polling or WebSocket
-- Resume for failed batches, with reconciliation so nothing is created twice
+- Resume for failed batches, with reconciliation against the upstream to avoid
+  creating a hospital twice
 - CSV validation endpoint
 - Test suite that runs without network access
 - Dockerfile, docker-compose, and Render blueprint
@@ -91,7 +92,7 @@ response in the assignment. Batch `status` is `processing`, `completed`, or
 | 202 | Accepted in `mode=async`; poll the `Location` header |
 | 404 | Unknown batch |
 | 409 | Resume requested for a batch that is processing or completed |
-| 413 | Upload larger than `MAX_UPLOAD_BYTES` |
+| 413 | Upload larger than `MAX_UPLOAD_BYTES`; oversized bodies are cut off while they arrive, not after |
 | 422 | Invalid CSV or request |
 | 502 | Resume could not read the batch from the upstream |
 
@@ -125,8 +126,10 @@ app/
 
 Request flow for `POST /hospitals/bulk`:
 
-1. The route reads the upload (size-capped) and calls the CSV parser.
-2. The processor creates a batch with a new UUID and stores it.
+1. A middleware rejects oversized bodies as they arrive; the route reads the
+   upload and calls the CSV parser.
+2. The processor creates a batch with a new UUID and stores it, then pings the
+   upstream to make sure it is awake.
 3. Rows are sent to the upstream concurrently through one pooled
    `httpx.AsyncClient`, bounded by a semaphore.
 4. Each finished row updates the store, which publishes a snapshot to
@@ -163,8 +166,15 @@ have stored the hospital and a retry would duplicate it.
 
 **Resume reconciles first.** Before retrying, resume lists the batch upstream
 and adopts any hospital that exists there but was recorded locally as failed.
-Combined with the retry rule above, a timed-out create does not produce a
-duplicate.
+Combined with the retry rule above, a create that timed out but did reach the
+upstream is not created a second time. Rows are matched on name, address, and
+phone. See Limitations for the cases this cannot cover.
+
+**Wake the upstream before creating.** The upstream runs on a free instance
+that can take longer than the request timeout to cold-start. Since a timed-out
+create cannot be retried safely, each run first sends a harmless request that
+can be retried. If the upstream stays unreachable, every row is marked failed
+without a single create being sent, and the batch can be resumed later.
 
 **One concurrency limit for the whole service.** The semaphore is shared by
 all batches, so many simultaneous uploads cannot multiply the load on the
@@ -236,7 +246,9 @@ select this repository, and apply.
   store would make runs durable; resume already handles picking up a
   half-finished batch.
 - **The store keeps the last 500 batches**, evicting the oldest finished one.
-- **A duplicate is still possible in one case:** a proxy returns
-  `502/503/504` after the upstream already stored the hospital, and the retry
-  creates it again. The upstream API has no idempotency key to prevent this.
+- **A duplicate is still possible in two cases,** because the upstream API has
+  no idempotency key. First, a proxy returns `502/503/504` after the upstream
+  already stored the hospital, and the retry creates it again. Second, resume
+  is called while a timed-out create is still being committed upstream, so the
+  reconciliation listing does not show it yet.
 - **No authentication**, as the assignment does not ask for it.

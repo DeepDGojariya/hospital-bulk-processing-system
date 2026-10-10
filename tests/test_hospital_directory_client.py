@@ -112,3 +112,24 @@ async def test_list_batch_raises_on_server_error(upstream, directory):
 
     with pytest.raises(UpstreamError):
         await upstream.list_batch(uuid4())
+
+
+async def test_ping_succeeds_when_upstream_is_up(upstream, directory):
+    await upstream.ping()
+
+    assert [request.url.path for request in directory.requests] == ["/"]
+
+
+async def test_ping_retries_read_timeout_from_a_cold_upstream(upstream, directory):
+    directory.script("ping", httpx.ReadTimeout("cold start"))
+
+    await upstream.ping()
+
+    assert len(directory.requests) == 2
+
+
+async def test_ping_raises_when_upstream_stays_down(upstream, directory):
+    directory.script("ping", 503, 503, 503)
+
+    with pytest.raises(UpstreamError):
+        await upstream.ping()

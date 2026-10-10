@@ -43,6 +43,10 @@ class HospitalDirectoryClient:
         self._backoff_seconds = backoff_seconds
         self._sleep = sleep
 
+    async def ping(self) -> None:
+        """Check the upstream is reachable. Idempotent, so timeouts are retried."""
+        await self._request("GET", "/", retry_on_timeout=True)
+
     async def create_hospital(self, row: HospitalRow, batch_id: UUID) -> int:
         payload = {
             "name": row.name,
