@@ -2,6 +2,8 @@ import httpx
 import pytest
 
 from app.clients.hospital_directory import HospitalDirectoryClient
+from app.services.processor import BatchProcessor
+from app.store.memory import InMemoryBatchStore
 from tests.fakes import FakeDirectory
 
 
@@ -24,3 +26,13 @@ async def upstream(directory, sleeps):
         base_url="http://directory.test", transport=httpx.MockTransport(directory)
     ) as http:
         yield HospitalDirectoryClient(http, max_retries=3, backoff_seconds=0.5, sleep=record_sleep)
+
+
+@pytest.fixture
+def store() -> InMemoryBatchStore:
+    return InMemoryBatchStore(max_batches=50)
+
+
+@pytest.fixture
+def processor(upstream, store) -> BatchProcessor:
+    return BatchProcessor(upstream, store, max_concurrency=3)
