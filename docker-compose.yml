@@ -1,0 +1,17 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      HOSPITAL_API_BASE_URL: ${HOSPITAL_API_BASE_URL:-https://hospital-directory.onrender.com}
+      MAX_CONCURRENCY: ${MAX_CONCURRENCY:-20}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 3
