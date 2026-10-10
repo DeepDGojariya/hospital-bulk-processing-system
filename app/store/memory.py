@@ -26,6 +26,10 @@ class InMemoryBatchStore:
     def get(self, batch_id: UUID) -> BatchState | None:
         return self._batches.get(batch_id)
 
+    def list(self) -> list[BatchState]:
+        # Dicts keep insertion order, which is creation order here.
+        return list(reversed(self._batches.values()))
+
     async def subscribe(self, batch_id: UUID) -> AsyncGenerator[BatchResult]:
         batch = self._batches.get(batch_id)
         if batch is None:

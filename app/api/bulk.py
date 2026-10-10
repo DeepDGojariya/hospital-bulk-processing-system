@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, UploadFile, sta
 from app.api.deps import ProcessorDep, SettingsDep, StoreDep
 from app.api.errors import CsvValidationError
 from app.config import Settings
-from app.schemas import BatchResult, ValidationReport
+from app.schemas import BatchResult, BatchSummary, ValidationReport
 from app.services.csv_parser import ParsedCsv, parse_hospital_csv
 from app.services.processor import BatchNotResumable, BatchProcessor, ReconciliationError
 from app.store.base import BatchState
@@ -68,6 +68,11 @@ async def bulk_create(
         raise CsvValidationError(parsed.errors)
     batch = processor.create_batch(parsed.rows)
     return await execute(batch, mode, processor, request, response)
+
+
+@router.get("", response_model=list[BatchSummary], summary="List processed batches, newest first")
+async def list_batches(store: StoreDep) -> list[BatchSummary]:
+    return [batch.to_summary() for batch in store.list()]
 
 
 @router.post(

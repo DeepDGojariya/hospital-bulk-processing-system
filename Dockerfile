@@ -1,3 +1,12 @@
+# Stage 1: build the React front end.
+FROM node:24-slim AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build -- --outDir dist
+
+# Stage 2: the Python service, which also serves the built front end.
 FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.14 /uv /bin/uv
@@ -14,6 +23,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY app ./app
+COPY --from=frontend /frontend/dist ./app/static
 
 RUN useradd --create-home appuser
 USER appuser

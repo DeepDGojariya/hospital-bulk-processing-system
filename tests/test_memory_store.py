@@ -139,3 +139,12 @@ def test_eviction_falls_back_to_the_oldest_failed_batch():
 
     assert store.get(failed_old.batch_id) is None
     assert store.get(failed_new.batch_id) is failed_new
+
+
+def test_list_returns_batches_newest_first():
+    store = InMemoryBatchStore(max_batches=10)
+    older, newer = make_batch(), make_batch()
+    store.save(older)
+    store.save(newer)
+
+    assert store.list() == [newer, older]

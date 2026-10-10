@@ -70,7 +70,9 @@ def create_app(
     app.include_router(bulk.router)
     app.include_router(progress.router)
     app.include_router(ui.router)
-    app.mount("/static", StaticFiles(directory=ui.STATIC_DIR), name="static")
+    assets = settings.ui_dir / "assets"
+    if assets.is_dir():  # absent until the front end has been built
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
     return app
 
 

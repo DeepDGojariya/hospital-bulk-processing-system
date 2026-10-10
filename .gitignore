@@ -6,3 +6,6 @@ __pycache__/
 .env
 .superpowers/
 docs/
+node_modules/
+# Built front end (output of `npm run build` in frontend/)
+app/static/

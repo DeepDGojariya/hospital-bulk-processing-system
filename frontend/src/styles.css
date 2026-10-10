@@ -146,7 +146,6 @@ input:focus-visible {
 
 .message {
   margin: 16px 0 0;
-  min-height: 1.5em;
 }
 
 .message:empty {
@@ -230,7 +229,7 @@ input:focus-visible {
   margin: 8px 0 0;
 }
 
-#resume {
+button.resume {
   margin-top: 16px;
 }
 
@@ -315,7 +314,7 @@ th {
   white-space: nowrap;
 }
 
-td:nth-child(2) {
+td.name {
   min-width: 11rem;
 }
 
@@ -335,4 +334,39 @@ footer {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
+.card-head + .table-wrap {
+  margin-top: 0;
+}
+
+button.small {
+  padding: 6px 12px;
+  font-size: 0.9rem;
+}
+
+/* A button that reads as a link: used to open a batch from the list. */
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+tr.selected {
+  background: var(--busy-bg);
 }

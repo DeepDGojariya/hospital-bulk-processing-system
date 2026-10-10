@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -44,6 +45,19 @@ class HospitalResult(BaseModel):
     name: str
     status: RowStatus
     error: str | None
+
+
+class BatchSummary(BaseModel):
+    """One line of the batch list: the totals without the per-row detail."""
+
+    batch_id: UUID
+    status: BatchStatus
+    created_at: datetime
+    total_hospitals: int
+    processed_hospitals: int
+    failed_hospitals: int
+    processing_time_seconds: float
+    batch_activated: bool
 
 
 class BatchResult(BaseModel):

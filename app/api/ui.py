@@ -1,15 +1,18 @@
-"""Serves the single-page upload UI. The page only calls the public API."""
+"""Serves the built React front end. The page only calls the public API."""
 
-from pathlib import Path
-
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+from app.api.deps import SettingsDep
 
 router = APIRouter(include_in_schema=False)
 
 
 @router.get("/")
-async def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+async def index(settings: SettingsDep) -> FileResponse:
+    page = settings.ui_dir / "index.html"
+    if not page.is_file():
+        raise HTTPException(
+            503, "The UI has not been built. Run `npm install && npm run build` in frontend/."
+        )
+    return FileResponse(page)

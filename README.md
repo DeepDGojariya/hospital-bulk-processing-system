@@ -9,8 +9,8 @@ Live URL: _added after deployment_ (interactive docs at `/docs`)
 ## Features
 
 - `POST /hospitals/bulk`: upload a CSV, get per-row results (required task)
-- A web page at `/` to validate a CSV, upload it, watch live progress, and
-  resume a failed batch
+- A React page at `/` to validate a CSV, upload it, watch live progress,
+  resume a failed batch, and browse the batches processed so far
 - Concurrent upstream calls with a bounded, shared concurrency limit
 - Retries with exponential backoff and jitter for transient upstream failures
 - Progress tracking by polling or WebSocket
@@ -23,8 +23,9 @@ Live URL: _added after deployment_ (interactive docs at `/docs`)
 ## Quick start
 
 ```bash
-# Local (requires uv: https://docs.astral.sh/uv/)
+# Local (requires uv: https://docs.astral.sh/uv/ and Node.js 20+)
 uv sync
+(cd frontend && npm install && npm run build)   # builds the page into app/static
 uv run uvicorn app.main:app --reload
 
 # Docker
@@ -43,12 +44,13 @@ curl -F file=@samples/hospitals.csv http://localhost:8000/hospitals/bulk
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/hospitals/bulk` | Process a CSV. `?mode=sync` (default) or `?mode=async` |
+| GET | `/hospitals/bulk` | List processed batches, newest first |
 | POST | `/hospitals/bulk/validate` | Validate a CSV without calling the upstream |
 | GET | `/hospitals/bulk/{batch_id}` | Batch status and progress |
 | WS | `/hospitals/bulk/{batch_id}/ws` | Live progress snapshots |
 | POST | `/hospitals/bulk/{batch_id}/resume` | Retry the failed part of a batch |
 | GET | `/health` | Health check |
-| GET | `/` | Upload page (static files under `/static`) |
+| GET | `/` | Upload page (built assets under `/assets`) |
 
 ### CSV format
 
@@ -130,7 +132,8 @@ app/
   services/processor.py       orchestrates run and resume
   clients/hospital_directory.py   upstream calls and retry policy
   store/                      BatchStore interface + in-memory implementation
-  static/                     upload page: plain HTML, CSS, and JavaScript
+  static/                     built front end (generated, not committed)
+frontend/                     React source for the upload page (Vite)
 ```
 
 Request flow for `POST /hospitals/bulk`:
@@ -150,17 +153,38 @@ parser, client, store, and processor are tested in isolation.
 
 ## Upload page
 
-The page at `/` is a thin client over the public API and uses nothing else:
+The page at `/` is a React app (`frontend/`, built with Vite) and a thin client
+over the public API; it uses nothing else.
 
 - **Validate** calls `/hospitals/bulk/validate` and lists errors by row and field.
 - **Upload and process** starts the batch with `mode=async`, then follows it
   over the WebSocket, updating the progress bar and the per-row table. If the
   socket cannot connect or drops, it polls the status endpoint instead.
 - **Resume failed batch** appears when a batch ends `failed`.
+- **Recent batches** lists what the service has processed, newest first, from
+  `GET /hospitals/bulk`. Choosing one opens it in the progress panel.
 
-It is plain HTML, CSS, and JavaScript with no build step, so it ships in the
-same container. Values from the CSV and the API are written to the page as
-text, never as HTML.
+The batch list comes from the in-memory store, so it covers batches processed
+since the service last started (up to `MAX_STORED_BATCHES`).
+
+How it is put together:
+
+```
+frontend/src/
+  api.js                 the only module that knows the API's URLs
+  useBatchFeed.js        hook: WebSocket feed with polling fallback
+  format.js              wording for statuses and summaries
+  App.jsx                page state: the shown batch and the batch list
+  components/            UploadCard, BatchPanel, ResultsTable, BatchList, ...
+```
+
+- **One service.** The Dockerfile builds the front end in a Node stage and
+  copies the result into the Python image, where FastAPI serves it. There is
+  one deployment, one URL, and no CORS.
+- **Safe rendering.** Values from the CSV and the API are rendered as text by
+  React, never as HTML.
+- **Development.** Run the API on port 8000 and `npm run dev` in `frontend/`;
+  the Vite dev server proxies API and WebSocket calls to it.
 
 ## Design decisions
 
@@ -256,6 +280,7 @@ free Render instance cold-starts.
 ```bash
 uv run pytest
 uv run ruff check . && uv run ruff format --check .
+(cd frontend && npm test)
 ```
 
 The upstream is replaced by a stateful in-process fake
@@ -264,6 +289,10 @@ the real client, retry, and concurrency code without network access. Coverage
 includes CSV edge cases, retry rules, partial failure, activation failure,
 resume and reconciliation, concurrency limits, every endpoint's error codes,
 and the WebSocket stream.
+
+The front end has component tests (Vitest and React Testing Library) for the
+upload card, the results table, the batch list, and the summary wording. The
+fetch API is stubbed in those tests; the live feed hook is not covered by them.
 
 ## Deployment
 
